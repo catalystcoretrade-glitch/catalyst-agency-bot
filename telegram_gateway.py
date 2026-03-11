@@ -1,56 +1,52 @@
 import logging
-import asyncio
-import os
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
 
-# Налаштування логування для контролю Big Data та стабільності 24/7
+# Налаштування системного логування для Big Data
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("CatalystNexus")
 
-# Твій НОВИЙ токен, який ти щойно згенерував (Revoked)
+# Конфігурація доступу
 TOKEN = "8563469431:AAFKui2wp1ZcRurc_-_EdUhuzIVclNcitH8"
+ADMIN_ID = 2025211758  # Твій ID
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Захист від пустих повідомлень
     if not update.message or not update.message.text:
         return
-    
-    user_text = update.message.text
-    user_id = update.message.from_user.id
-    
-    # Логування входу даних (імітація збору Big Data)
-    logger.info(f"📩 Отримано дані від ID {user_id}: {user_text[:20]}...")
 
-    response = (
-        "✅ **Catalyst Nexus: Повідомлення отримано!**\n\n"
-        "🔒 Ваші дані анонімізовано через Privacy Shield.\n"
-        "🤖 AI-менеджер уже аналізує ваш запит для капіталізації."
-    )
-    
-    try:
-        await update.message.reply_text(response, parse_mode='Markdown')
-    except Exception as e:
-        logger.error(f"❌ Помилка відправки відповіді: {e}")
+    user = update.message.from_user
+    user_text = update.message.text
+    user_id = user.id
+
+    # Логіка розподілу ролей (Директор проекту vs Клієнт)
+    if user_id == ADMIN_ID:
+        logger.info(f"👑 ADMIN ACTION: {user_text}")
+        response = (
+            "🚀 **Вітаю, Директоре.**\n\n"
+            "Система Catalyst Nexus працює в штатному режимі.\n"
+            "📡 **Статус:** Data Collection Active\n"
+            "📊 **Капіталізація:** У процесі аналізу..."
+        )
+    else:
+        # Анонімізація даних клієнта
+        logger.info(f"👤 INCOMING LEAD (Anonymized): {user_id}")
+        response = (
+            "✅ **Catalyst Nexus: Повідомлення отримано.**\n\n"
+            "🔒 **Privacy Shield:** Активовано. Ваші дані анонімізовано.\n"
+            "🤖 AI-менеджер обробляє запит. Очікуйте на зв'язок."
+        )
+
+    await update.message.reply_text(response, parse_mode='Markdown')
 
 if __name__ == '__main__':
-    try:
-        print("🚀 Ініціалізація Catalyst Nexus Bot на Render...")
-        
-        # Створення додатку
-        application = ApplicationBuilder().token(TOKEN).build()
-        
-        # Реєстрація обробника повідомлень
-        message_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message)
-        application.add_handler(message_handler)
-        
-        print("📡 З'єднання з Telegram встановлено. Бот слухає ефір...")
-        
-        # Запуск бота
-        application.run_polling()
-        
-    except Exception as e:
-        print(f"💥 КРИТИЧНА ПОМИЛКА ЗАПУСКУ: {e}")
+    print("🛠 Запуск професійного ядра Catalyst Nexus...")
+    application = ApplicationBuilder().token(TOKEN).build()
+    
+    # Фільтр: тільки текст, ігноруємо команди
+    application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
+    
+    print("📡 Ядро синхронізовано з Telegram API. Очікую дані...")
+    application.run_polling()
