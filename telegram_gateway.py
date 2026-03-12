@@ -4,63 +4,78 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
+from openai import OpenAI
 
-# --- RENDER STABILITY ---
+# --- СТАБІЛЬНІСТЬ RENDER (HEALTH CHECK) ---
 class HealthCheckHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"PREMIUM_AI_ASSISTANT_ONLINE")
+        self.wfile.write(b"AI_ASSISTANT_ONLINE")
 
 def run_health_check():
-    httpd = HTTPServer(('0.0.0.0', int(os.environ.get('PORT', 10000))), HealthCheckHandler)
+    port = int(os.environ.get('PORT', 10000))
+    httpd = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
     httpd.serve_forever()
 
-# --- CONFIGURATION ---
+# --- КОНФІГУРАЦІЯ ---
 TOKEN = "8563469431:AAFKui2wp1ZcRurc_-_EdUhuzIVclNcitH8"
-ADMIN_ID = 2025211758 # Власник (Ти)
+ADMIN_ID = 2025211758 # Твій ID
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-# --- POLISH LOCALIZATION (High Quality) ---
-MESSAGES = {
-    "pl": {
-        "welcome": "Dzień dobry! Jestem AI-asystentem wspierającym Twój biznes. Jak mogę Panu/Pani pomóc?",
-        "options": "🗓 Zmiana terminu wizyty\n💰 Zapytanie o rabat\n👤 Kontakt z właścicielem",
-        "confirm": "Dziękuję. Twoja wiadomość została przekazana. Sprawdzam harmonogram i wrócę z odpowiedzią wkrótce.",
-        "admin_alert": "🔔 **NOWY KLIENT (POLSKA)**\n👤 {name} (@{username})\n📝 Wiadomość: {text}"
-    }
-}
+logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# --- ІНТЕЛЕКТУАЛЬНИЙ МОДУЛЬ (GPT-4o) ---
+def get_ai_response(user_text, user_name):
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": f"""
+                Jesteś profesjonalnym asystentem biznesowym o nazwie Catalyst AI. 
+                Twoim zadaniem jest obsługa klientów w języku polskim. 
+                Klient ma na imię {user_name}. 
+                Zasady:
+                1. Używaj formy Pan/Pani. Bądź niezwykle uprzejmy i profesjonalny.
+                2. Jeśli klient chce zmienić termin wizyty, powiedz, że sprawdzasz grafik i zaproponuj rozwiązanie.
+                3. Jeśli klient prosi o rabat, zaproponuj 5-10% zniżki jako gest dobrej woli, ale zaznacz, że musisz to potwierdzić z właścicielem.
+                4. Jeśli klient chce pilnego kontaktu z właścicielem, poinformuj, że wiadomość została wysłana priorytetowo.
+                5. Twoim celem jest, aby właściciel (Dyrektor) nie musiał zajmować się rutyną.
+                """},
+                {"role": "user", "content": user_text}
+            ]
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        logging.error(f"OpenAI Error: {e}")
+        return "Przepraszam, mam chwilowe trudności techniczne. Zaraz wrócę do Pana/Pani z informacją."
+
+# --- ОБРОБКА ПОВІДОМЛЕНЬ ---
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.text: return
     u = update.message.from_user
-    if u.id == ADMIN_ID:
-        await update.message.reply_text("🚀 System operacyjny Catalyst Nexus aktywnй. Język ustawiony: Polski (PL).")
-    else:
-        lang = "pl" # За замовчуванням для польського ринку
-        await update.message.reply_text(f"{MESSAGES[lang]['welcome']}\n\n{MESSAGES[lang]['options']}")
-
-async def handle_communication(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.message.from_user
     text = update.message.text
-    lang = "pl"
 
-    if user.id == ADMIN_ID:
-        # Логіка управління (інструкції для бота)
-        print(f"⚙️ INSTRUKCJA ADMINA: {text}")
-        await update.message.reply_text("✅ Instrukcja przyjęta. Realizuję zmiany w harmonogramie.")
+    # Якщо пишеш ти (Адмін)
+    if u.id == ADMIN_ID:
+        await update.message.reply_text("🚀 Catalyst AI: Dyrektorze, system działa w trybie inteligentnym. Wszystkie zapytania są analizowane.")
+    
+    # Якщо пише клієнт
     else:
-        # Сповіщення тебе
-        alert = MESSAGES[lang]['admin_alert'].format(name=user.first_name, username=user.username, text=text)
-        await context.bot.send_message(chat_id=ADMIN_ID, text=alert, parse_mode='Markdown')
-        
-        # Відповідь клієнту
-        await update.message.reply_text(MESSAGES[lang]['confirm'])
+        # 1. AI готує професійну відповідь
+        ai_reply = get_ai_response(text, u.first_name)
+        await update.message.reply_text(ai_reply)
+
+        # 2. Тобі приходить повний звіт про переговори
+        alert = (f"🔔 **INTELIGENTNY ALERT (PL)**\n"
+                 f"👤 Klient: {u.first_name} (@{u.username if u.username else 'brak'})\n"
+                 f"📝 Napisał: {text}\n"
+                 f"🤖 AI Odpowiedziało: {ai_reply}")
+        await context.bot.send_message(chat_id=ADMIN_ID, text=alert)
 
 if __name__ == '__main__':
     Thread(target=run_health_check, daemon=True).start()
     app = ApplicationBuilder().token(TOKEN).build()
-    
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_communication))
-    
-    print("📡 HIGH-QUALITY POLISH MVP LAUNCHED.")
+    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
+    print("📡 PREMIUM POLISH AI ASSISTANT STARTING...")
     app.run_polling()
